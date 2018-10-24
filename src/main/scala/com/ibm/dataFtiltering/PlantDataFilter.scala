@@ -61,7 +61,7 @@ object PlantDataFilter {
     // create kafka direct stream object
     val stream = KafkaUtils.createDirectStream[String, String](sc, PreferConsistent, Subscribe[String, String](topics, kafkaConf))
  
-    val readConfig = ReadConfig(Map("uri" -> config.getString("mongo.MONGO_HOST_URL"), "database" -> config.getString("mongo.MONGO_DATABASE_NAME"), "collection" -> "PLANT_TRANSACTION"))
+    val readConfig = ReadConfig(Map("uri" -> config.getString("mongo.MONGO_HOST_URL"), "database" -> config.getString("mongo.MONGO_DATABASE_NAME"), "collection" -> "TAG_GROUPSi"))
     val writeConfig = WriteConfig(Map("uri" -> config.getString("mongo.MONGO_HOST_URL"), "database" -> config.getString("mongo.MONGO_DATABASE_NAME"), "collection" -> "OPC_PLANT_DATA"))
 
     val opcDataTypes : List[String]= List("Boolean","Boolean Array","Byte","Byte Array∗","Short Array∗","BCD","BCD Array∗","Word","Word Array∗","Long","Long Array∗","LBCD Array∗","DWord","DWord Array∗","Float","Float Array∗","Double","Double Array∗","LLong","LLong Array","Qword","Qword Array","Char","String")
@@ -82,8 +82,20 @@ object PlantDataFilter {
     
     
     val rows = raw.map(r => Row.fromSeq(r.split(",")))
+    
+    rows.foreach(row =>{
+      val field1 = row(0).toString()
+      val splitedfield1 = field1.split("!")
+      val itemId = splitedfield1(1)
+      val splitedItemID = itemId.split(".")
+      val parameter = splitedItemID(1)
+      val tagId = splitedItemID(0)
+      val transformed = Row.fromSeq(Seq(itemId, tagId, parameter, row(1), row(2), row(3)))
+      val transformedRDD = rdd.sparkContext.parallelize(List(transformed))
+    
+    
     try{
-    val inputDF = sqlContext.createDataFrame(rows, Raw.struct)
+    val inputDF = sqlContext.createDataFrame(transformedRDD, Raw.struct)
 
     val plantTags = spark.read.mongo(readConfig)
     val tags = plantTags.select($"TAGS"("ITEM_ID"))
@@ -116,6 +128,7 @@ object PlantDataFilter {
     metadata.foreach { metadata => metadata.get() }
   }
         inputDF.saveToMongoDB(writeConfig)
+        
       
     }else{
       logger.error("arg0")
@@ -124,7 +137,7 @@ object PlantDataFilter {
     }catch{ 
      case e: Exception => logger.info("exception caught: " + e);
     }
-    
+    })
     
     
     
